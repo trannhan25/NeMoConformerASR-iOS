@@ -1,0 +1,15 @@
+{
+  "originHash" : "fa7dc4daf3ee645e1eae5e21f74cde5e6a2e678b0194734b76eab943aabe69ec",
+  "pins" : [
+    {
+      "identity" : "nemofeatureextractor-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Otosaku/NeMoFeatureExtractor-iOS.git",
+      "state" : {
+        "revision" : "253a2d4fb60f99db2edd2dce7e6cd1360e4676e1",
+        "version" : "1.0.5"
+      }
+    }
+  ],
+  "version" : 3
+}

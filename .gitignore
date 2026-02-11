@@ -1,0 +1,18 @@
+# Build artifacts
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# CoreML models (should be downloaded separately)
+*.mlmodelc
+*.mlpackage
+
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint

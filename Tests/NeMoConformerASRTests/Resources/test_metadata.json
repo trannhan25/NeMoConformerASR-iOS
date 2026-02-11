@@ -1,0 +1,13 @@
+{
+  "sample_rate": 16000,
+  "num_samples": 160000,
+  "duration_sec": 10,
+  "frequency_hz": 440,
+  "mel_shape": [
+    1,
+    80,
+    1001
+  ],
+  "mel_frames": 1001,
+  "n_mels": 80
+}
