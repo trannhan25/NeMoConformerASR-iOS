@@ -5,9 +5,10 @@ Swift library for speech recognition using NVIDIA NeMo Conformer CTC model on iO
 ## Features
 
 - NVIDIA NeMo Conformer CTC Small model (13M parameters)
-- Automatic audio padding and chunking for any duration
+- **VAD-based smart segmentation** for long audio (powered by [NeMoVAD-iOS](https://github.com/Otosaku/NeMoVAD-iOS))
+- Returns both full text and timestamped segments
+- Automatic audio padding for any duration
 - Support for 5, 10, 15, and 20 second audio segments
-- Long audio processing with automatic chunking (50% overlap)
 - Pure Swift implementation with CoreML backend
 
 ## Requirements
@@ -24,9 +25,11 @@ Add the following to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Otosaku/NeMoConformerASR-iOS.git", from: "1.0.0")
+    .package(url: "https://github.com/Otosaku/NeMoConformerASR-iOS.git", from: "1.1.0")
 ]
 ```
+
+> **Note:** Version 1.1.0+ includes VAD-based segmentation with timestamped results. For the previous API returning plain text, use version 1.0.0.
 
 Or in Xcode: File → Add Package Dependencies → Enter repository URL.
 
@@ -57,8 +60,34 @@ let asr = try NeMoConformerASR(
 )
 
 // Recognize speech (samples must be 16kHz mono Float32)
-let text = try asr.recognize(samples: audioSamples)
-print(text)
+let result = try asr.recognize(samples: audioSamples)
+
+// Full recognized text
+print(result.text)
+
+// Individual segments with timestamps
+for segment in result.segments {
+    print("[\(segment.start)s - \(segment.end)s]: \(segment.text)")
+}
+
+// Audio duration
+print("Duration: \(result.audioDuration)s")
+```
+
+### ASRResult Structure
+
+```swift
+public struct ASRResult {
+    let text: String           // Full recognized text
+    let segments: [ASRSegment] // Timestamped segments
+    let audioDuration: Double  // Total audio duration in seconds
+}
+
+public struct ASRSegment {
+    let start: Double  // Start time in seconds
+    let end: Double    // End time in seconds
+    let text: String   // Recognized text for this segment
+}
 ```
 
 ### Get Encoder Output
@@ -80,7 +109,17 @@ The model supports the following input sizes (audio is automatically padded):
 | 15 sec   | 240,000 | 1,501      | 376            |
 | 20 sec   | 320,000 | 2,001      | 501            |
 
-For audio longer than 20 seconds, the library automatically splits it into chunks with 50% overlap.
+### Long Audio Processing
+
+For audio longer than 20 seconds, the library uses VAD (Voice Activity Detection) for intelligent segmentation:
+
+1. **VAD Analysis**: Detects speech vs silence regions
+2. **Smart Merging**: Merges speech segments with gaps < 0.3s
+3. **Splitting**: Splits segments longer than 20s into equal parts
+4. **Filtering**: Ignores segments shorter than 0.5s
+5. **Recognition**: Processes each segment independently
+
+This approach provides accurate timestamps and avoids cutting words in the middle.
 
 ## Example Project
 
@@ -109,6 +148,7 @@ The repository includes a complete example app with audio recording and file imp
 - **Record Audio**: Tap to record from microphone, automatically converts to 16kHz mono
 - **Import Audio**: Import any audio file (mp3, wav, m4a, etc.), automatically converts format
 - **Results**: Shows recognized text, audio duration, and processing time
+- **Segments View**: Displays individual speech segments with timestamps for long audio
 
 ## Model Information
 
@@ -130,6 +170,7 @@ The example app handles conversion from any audio format automatically.
 ## Dependencies
 
 - [NeMoFeatureExtractor-iOS](https://github.com/Otosaku/NeMoFeatureExtractor-iOS) - Mel spectrogram extraction
+- [NeMoVAD-iOS](https://github.com/Otosaku/NeMoVAD-iOS) - Voice Activity Detection for smart segmentation
 
 ## License
 

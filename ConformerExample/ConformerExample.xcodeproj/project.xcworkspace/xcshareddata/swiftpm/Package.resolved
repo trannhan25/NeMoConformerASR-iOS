@@ -9,6 +9,15 @@
         "revision" : "253a2d4fb60f99db2edd2dce7e6cd1360e4676e1",
         "version" : "1.0.5"
       }
+    },
+    {
+      "identity" : "nemovad-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Otosaku/NeMoVAD-iOS.git",
+      "state" : {
+        "revision" : "f3c9a698a2a29d490d56226989eec6da1059e18d",
+        "version" : "1.0.0"
+      }
     }
   ],
   "version" : 3

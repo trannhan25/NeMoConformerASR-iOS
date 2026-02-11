@@ -1,6 +1,7 @@
 import Foundation
 import CoreML
 import NeMoFeatureExtractor
+import NeMoVAD
 
 /// NeMo Conformer ASR errors
 public enum NeMoConformerASRError: Error, LocalizedError {
@@ -21,6 +22,29 @@ public enum NeMoConformerASRError: Error, LocalizedError {
             return "Inference failed: \(message)"
         }
     }
+}
+
+/// A single recognized speech segment with timing information
+public struct ASRSegment: Sendable {
+    /// Start time in seconds
+    public let start: Double
+    /// End time in seconds
+    public let end: Double
+    /// Recognized text for this segment
+    public let text: String
+
+    /// Duration in seconds
+    public var duration: Double { end - start }
+}
+
+/// Result of speech recognition
+public struct ASRResult: Sendable {
+    /// Full recognized text (all segments joined)
+    public let text: String
+    /// Individual segments with timing
+    public let segments: [ASRSegment]
+    /// Total audio duration in seconds
+    public let audioDuration: Double
 }
 
 /// Supported input durations for the Conformer model
@@ -68,7 +92,6 @@ public enum ConformerInputDuration: CaseIterable {
 
     /// Select appropriate duration for given sample count
     public static func select(forSamples count: Int) -> ConformerInputDuration {
-        // Select the smallest duration that fits, or twentySeconds for longer
         for duration in allCases {
             if count <= duration.samples {
                 return duration
@@ -78,25 +101,28 @@ public enum ConformerInputDuration: CaseIterable {
     }
 }
 
-/// NeMo Conformer CTC ASR
+/// NeMo Conformer CTC ASR with VAD-based segmentation
 public final class NeMoConformerASR: @unchecked Sendable {
 
     /// Sample rate expected by the model
     public static let sampleRate: Int = 16000
 
-    /// Feature extractor
+    /// Maximum duration for single inference (seconds)
+    public static let maxSegmentDuration: Double = 20.0
+
+    /// Minimum segment duration to process (seconds)
+    public static let minSegmentDuration: Double = 0.5
+
+    /// Minimum silence duration to use as cut point (seconds)
+    public static let minSilenceForCut: Double = 0.3
+
+    // MARK: - Private Properties
+
     private let featureExtractor: NeMoFeatureExtractor
-
-    /// Encoder CoreML model
     private let encoder: MLModel
-
-    /// Decoder CoreML model
     private let decoder: MLModel
-
-    /// BPE vocabulary
     private let vocabulary: [String]
-
-    /// CTC blank token ID
+    private let vad: NeMoVAD
     private let blankId: Int = 1024
 
     /// Initialize NeMo Conformer ASR
@@ -111,8 +137,11 @@ public final class NeMoConformerASR: @unchecked Sendable {
         vocabularyURL: URL,
         computeUnits: MLComputeUnits = .all
     ) throws {
-        // Initialize feature extractor with NeMo ASR config
+        // Initialize feature extractor
         self.featureExtractor = NeMoFeatureExtractor(config: .nemoASR)
+
+        // Initialize VAD
+        self.vad = try NeMoVAD(config: .default, computeUnits: computeUnits)
 
         // Load CoreML models
         let config = MLModelConfiguration()
@@ -143,23 +172,27 @@ public final class NeMoConformerASR: @unchecked Sendable {
 
     /// Recognize speech from audio samples
     /// - Parameter samples: Audio samples (Float32, mono, 16kHz)
-    /// - Returns: Recognized text
-    public func recognize(samples: [Float]) throws -> String {
+    /// - Returns: ASRResult with text and segments
+    public func recognize(samples: [Float]) throws -> ASRResult {
         guard !samples.isEmpty else {
             throw NeMoConformerASRError.invalidInput("Empty audio samples")
         }
 
-        // Process in chunks if audio is longer than max duration
-        let maxSamples = ConformerInputDuration.twentySeconds.samples
+        let audioDuration = Double(samples.count) / Double(Self.sampleRate)
 
-        if samples.count <= maxSamples {
-            // Single chunk processing
-            let logits = try processChunk(samples)
-            return ctcGreedyDecode(logits: logits)
-        } else {
-            // Multi-chunk processing with overlap
-            return try processLongAudio(samples)
+        // For short audio, process directly
+        if audioDuration <= Self.maxSegmentDuration {
+            let text = try recognizeSegment(samples: samples)
+            let segment = ASRSegment(start: 0, end: audioDuration, text: text)
+            return ASRResult(
+                text: text,
+                segments: text.isEmpty ? [] : [segment],
+                audioDuration: audioDuration
+            )
         }
+
+        // For long audio, use VAD-based segmentation
+        return try recognizeLongAudio(samples: samples, audioDuration: audioDuration)
     }
 
     /// Encode audio samples to encoder output
@@ -170,14 +203,11 @@ public final class NeMoConformerASR: @unchecked Sendable {
             throw NeMoConformerASRError.invalidInput("Empty audio samples")
         }
 
-        // Pad to supported duration
         let paddedSamples = padToSupportedDuration(samples)
         let duration = ConformerInputDuration.select(forSamples: paddedSamples.count)
 
-        // Extract mel features
         let melArray = try featureExtractor.processToMLMultiArray(samples: paddedSamples)
 
-        // Verify mel shape
         let melFrames = melArray.shape[2].intValue
         guard melFrames == duration.melFrames else {
             throw NeMoConformerASRError.invalidInput(
@@ -185,7 +215,6 @@ public final class NeMoConformerASR: @unchecked Sendable {
             )
         }
 
-        // Run encoder
         let lengthArray = try createLengthArray(value: melFrames)
 
         let encoderInput = try MLDictionaryFeatureProvider(dictionary: [
@@ -205,16 +234,119 @@ public final class NeMoConformerASR: @unchecked Sendable {
 
     // MARK: - Private Methods
 
-    /// Process a single audio chunk and return logits
-    private func processChunk(_ samples: [Float]) throws -> [[Float]] {
-        // Pad to supported duration
+    /// Recognize long audio using VAD-based segmentation
+    private func recognizeLongAudio(samples: [Float], audioDuration: Double) throws -> ASRResult {
+        // Step 1: Run VAD to find speech segments
+        let vadResult = try vad.process(samples: samples)
+
+        // If no speech detected
+        guard !vadResult.segments.isEmpty else {
+            return ASRResult(text: "", segments: [], audioDuration: audioDuration)
+        }
+
+        // Step 2: Process VAD segments - merge close ones, split long ones
+        let processedSegments = processVADSegments(vadResult.segments, audioDuration: audioDuration)
+
+        // Step 3: Recognize each segment
+        var asrSegments: [ASRSegment] = []
+
+        for segment in processedSegments {
+            let startSample = Int(segment.start * Double(Self.sampleRate))
+            let endSample = min(Int(segment.end * Double(Self.sampleRate)), samples.count)
+
+            guard endSample > startSample else { continue }
+
+            let segmentSamples = Array(samples[startSample..<endSample])
+            let text = try recognizeSegment(samples: segmentSamples)
+
+            if !text.isEmpty {
+                asrSegments.append(ASRSegment(
+                    start: segment.start,
+                    end: segment.end,
+                    text: text
+                ))
+            }
+        }
+
+        // Step 4: Join all text
+        let fullText = asrSegments.map { $0.text }.joined(separator: " ")
+
+        return ASRResult(
+            text: fullText,
+            segments: asrSegments,
+            audioDuration: audioDuration
+        )
+    }
+
+    /// Process VAD segments: merge close ones, split long ones
+    private func processVADSegments(_ segments: [VADSegment], audioDuration: Double) -> [VADSegment] {
+        guard !segments.isEmpty else { return [] }
+
+        var result: [VADSegment] = []
+
+        // First, merge segments that are very close together
+        var current = segments[0]
+
+        for i in 1..<segments.count {
+            let next = segments[i]
+            let gap = next.start - current.end
+
+            // Merge if gap is small
+            if gap < Self.minSilenceForCut {
+                current = VADSegment(start: current.start, end: next.end)
+            } else {
+                result.append(current)
+                current = next
+            }
+        }
+        result.append(current)
+
+        // Then, split segments that are too long
+        var finalResult: [VADSegment] = []
+
+        for segment in result {
+            let duration = segment.end - segment.start
+
+            if duration <= Self.maxSegmentDuration {
+                // Segment is short enough
+                if duration >= Self.minSegmentDuration {
+                    finalResult.append(segment)
+                }
+            } else {
+                // Need to split this segment
+                let splitSegments = splitLongSegment(segment)
+                finalResult.append(contentsOf: splitSegments)
+            }
+        }
+
+        return finalResult
+    }
+
+    /// Split a segment that's longer than maxSegmentDuration
+    private func splitLongSegment(_ segment: VADSegment) -> [VADSegment] {
+        let duration = segment.end - segment.start
+        let numChunks = Int(ceil(duration / Self.maxSegmentDuration))
+        let chunkDuration = duration / Double(numChunks)
+
+        var result: [VADSegment] = []
+
+        for i in 0..<numChunks {
+            let start = segment.start + Double(i) * chunkDuration
+            let end = min(segment.start + Double(i + 1) * chunkDuration, segment.end)
+            result.append(VADSegment(start: start, end: end))
+        }
+
+        return result
+    }
+
+    /// Recognize a single segment (must be <= 20 seconds)
+    private func recognizeSegment(samples: [Float]) throws -> String {
         let paddedSamples = padToSupportedDuration(samples)
         let duration = ConformerInputDuration.select(forSamples: paddedSamples.count)
 
         // Extract mel features
         let melArray = try featureExtractor.processToMLMultiArray(samples: paddedSamples)
 
-        // Verify mel shape
         let melFrames = melArray.shape[2].intValue
         guard melFrames == duration.melFrames else {
             throw NeMoConformerASRError.invalidInput(
@@ -249,45 +381,9 @@ public final class NeMoConformerASR: @unchecked Sendable {
             throw NeMoConformerASRError.inferenceFailed("Failed to get decoder output")
         }
 
-        // Convert to 2D array [time, vocab]
-        return extractLogits(from: logits)
-    }
-
-    /// Process long audio by chunking
-    private func processLongAudio(_ samples: [Float]) throws -> String {
-        let chunkDuration = ConformerInputDuration.twentySeconds
-        let chunkSamples = chunkDuration.samples
-        let hopSamples = chunkSamples / 2  // 50% overlap
-
-        var allTexts: [String] = []
-        var offset = 0
-
-        while offset < samples.count {
-            let endIndex = min(offset + chunkSamples, samples.count)
-            var chunk = Array(samples[offset..<endIndex])
-
-            // Pad last chunk if needed
-            if chunk.count < chunkSamples {
-                chunk.append(contentsOf: [Float](repeating: 0, count: chunkSamples - chunk.count))
-            }
-
-            let logits = try processChunk(chunk)
-            let text = ctcGreedyDecode(logits: logits)
-
-            if !text.isEmpty {
-                allTexts.append(text)
-            }
-
-            offset += hopSamples
-
-            // Break if we've processed all audio
-            if endIndex >= samples.count {
-                break
-            }
-        }
-
-        // Simple concatenation (could be improved with overlap handling)
-        return allTexts.joined(separator: " ")
+        // CTC decode
+        let logitsArray = extractLogits(from: logits)
+        return ctcGreedyDecode(logits: logitsArray)
     }
 
     /// Pad samples to a supported duration
@@ -298,7 +394,6 @@ public final class NeMoConformerASR: @unchecked Sendable {
             return samples
         }
 
-        // Pad with zeros
         var padded = samples
         padded.append(contentsOf: [Float](repeating: 0, count: duration.samples - samples.count))
         return padded
@@ -313,7 +408,6 @@ public final class NeMoConformerASR: @unchecked Sendable {
 
     /// Extract logits from MLMultiArray to 2D array
     private func extractLogits(from mlArray: MLMultiArray) -> [[Float]] {
-        // Shape: [1, time, vocab_size]
         let timeSteps = mlArray.shape[1].intValue
         let vocabSize = mlArray.shape[2].intValue
 
@@ -323,7 +417,6 @@ public final class NeMoConformerASR: @unchecked Sendable {
         for t in 0..<timeSteps {
             var frame = [Float](repeating: 0, count: vocabSize)
             for v in 0..<vocabSize {
-                // Use 3D subscript access
                 frame[v] = mlArray[[0, t, v] as [NSNumber]].floatValue
             }
             logits.append(frame)
@@ -338,7 +431,6 @@ public final class NeMoConformerASR: @unchecked Sendable {
         var prevId: Int? = nil
 
         for frame in logits {
-            // Find argmax
             var maxIdx = 0
             var maxVal = frame[0]
             for (idx, val) in frame.enumerated() {
@@ -348,20 +440,17 @@ public final class NeMoConformerASR: @unchecked Sendable {
                 }
             }
 
-            // Skip blanks and repeated tokens
             if maxIdx != blankId && maxIdx != prevId {
                 decodedIds.append(maxIdx)
             }
             prevId = maxIdx
         }
 
-        // Convert to text
         let tokens = decodedIds.compactMap { id -> String? in
             guard id < vocabulary.count else { return nil }
             return vocabulary[id]
         }
 
-        // Join and clean up BPE tokens
         return tokens.joined().replacingOccurrences(of: "▁", with: " ").trimmingCharacters(in: .whitespaces)
     }
 }
@@ -370,7 +459,7 @@ public final class NeMoConformerASR: @unchecked Sendable {
 
 extension NeMoConformerASR {
     /// Process Double samples
-    public func recognize(samples: [Double]) throws -> String {
+    public func recognize(samples: [Double]) throws -> ASRResult {
         let floatSamples = samples.map { Float($0) }
         return try recognize(samples: floatSamples)
     }

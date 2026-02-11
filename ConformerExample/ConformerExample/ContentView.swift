@@ -15,24 +15,24 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                // Status
-                statusView
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Status
+                    statusView
 
-                // Recording controls
-                recordingControls
+                    // Recording controls
+                    recordingControls
 
-                // Import button
-                importButton
+                    // Import button
+                    importButton
 
-                // Result
-                if !viewModel.recognizedText.isEmpty {
-                    resultView
+                    // Result
+                    if viewModel.result != nil {
+                        resultView
+                    }
                 }
-
-                Spacer()
+                .padding()
             }
-            .padding()
             .navigationTitle("Conformer ASR")
             .fileImporter(
                 isPresented: $viewModel.showFilePicker,
@@ -75,7 +75,6 @@ struct ContentView: View {
     private var recordingControls: some View {
         VStack(spacing: 16) {
             if viewModel.isRecording {
-                // Stop button
                 Button(action: viewModel.stopRecording) {
                     Label("Stop Recording", systemImage: "stop.circle.fill")
                         .font(.title2)
@@ -86,7 +85,6 @@ struct ContentView: View {
                         .cornerRadius(12)
                 }
             } else {
-                // Record button
                 Button(action: viewModel.startRecording) {
                     Label("Record Audio", systemImage: "mic.circle.fill")
                         .font(.title2)
@@ -119,38 +117,72 @@ struct ContentView: View {
     }
 
     private var resultView: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header
             HStack {
                 Text("Result")
                     .font(.headline)
                 Spacer()
                 Button(action: {
-                    UIPasteboard.general.string = viewModel.recognizedText
+                    UIPasteboard.general.string = viewModel.result?.text ?? ""
                 }) {
                     Image(systemName: "doc.on.doc")
                 }
             }
 
-            Text(viewModel.recognizedText)
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(8)
+            // Full text
+            if let result = viewModel.result {
+                Text(result.text.isEmpty ? "(no speech detected)" : result.text)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
 
-            if let duration = viewModel.audioDuration,
-               let processingTime = viewModel.processingTime {
+                // Stats
                 HStack {
-                    Text("Audio: \(duration, specifier: "%.1f")s")
+                    Text("Audio: \(result.audioDuration, specifier: "%.1f")s")
                     Spacer()
-                    Text("Processing: \(processingTime, specifier: "%.2f")s")
+                    if let processingTime = viewModel.processingTime {
+                        Text("Processing: \(processingTime, specifier: "%.2f")s")
+                    }
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)
+
+                // Segments
+                if result.segments.count > 1 {
+                    Divider()
+
+                    Text("Segments (\(result.segments.count))")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+
+                    ForEach(Array(result.segments.enumerated()), id: \.offset) { index, segment in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("[\(formatTime(segment.start)) - \(formatTime(segment.end))]")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .monospacedDigit()
+                            Text(segment.text)
+                                .font(.callout)
+                        }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.blue.opacity(0.05))
+                        .cornerRadius(6)
+                    }
+                }
             }
         }
         .padding()
         .background(Color.green.opacity(0.05))
         .cornerRadius(12)
+    }
+
+    private func formatTime(_ seconds: Double) -> String {
+        let mins = Int(seconds) / 60
+        let secs = seconds.truncatingRemainder(dividingBy: 60)
+        return String(format: "%d:%05.2f", mins, secs)
     }
 }
 
@@ -163,12 +195,11 @@ class ASRViewModel: ObservableObject {
     @Published var isRecording = false
     @Published var isProcessing = false
     @Published var recordingDuration: Double = 0
-    @Published var recognizedText = ""
+    @Published var result: ASRResult?
+    @Published var processingTime: Double?
     @Published var showFilePicker = false
     @Published var showError = false
     @Published var errorMessage = ""
-    @Published var audioDuration: Double?
-    @Published var processingTime: Double?
 
     private var asr: NeMoConformerASR?
     private var audioRecorder: AudioRecorder?
@@ -212,7 +243,7 @@ class ASRViewModel: ObservableObject {
             try recorder.startRecording()
             isRecording = true
             recordingDuration = 0
-            recognizedText = ""
+            result = nil
 
             recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 Task { @MainActor in
@@ -246,8 +277,8 @@ class ASRViewModel: ObservableObject {
         }
     }
 
-    func handleFileImport(_ result: Result<[URL], Error>) {
-        switch result {
+    func handleFileImport(_ importResult: Result<[URL], Error>) {
+        switch importResult {
         case .success(let urls):
             guard let url = urls.first else { return }
             loadAndRecognize(url: url)
@@ -258,13 +289,11 @@ class ASRViewModel: ObservableObject {
 
     private func loadAndRecognize(url: URL) {
         isProcessing = true
-        recognizedText = ""
+        result = nil
 
         Task {
             do {
                 let samples = try await loadAudioFile(url: url)
-                audioDuration = Double(samples.count) / 16000.0
-
                 recognize(samples: samples)
             } catch {
                 isProcessing = false
@@ -274,7 +303,6 @@ class ASRViewModel: ObservableObject {
     }
 
     private func loadAudioFile(url: URL) async throws -> [Float] {
-        // Start accessing security-scoped resource
         guard url.startAccessingSecurityScopedResource() else {
             throw NSError(domain: "ASR", code: 2, userInfo: [NSLocalizedDescriptionKey: "Cannot access file"])
         }
@@ -289,7 +317,6 @@ class ASRViewModel: ObservableObject {
 
         try file.read(into: buffer)
 
-        // Convert to 16kHz mono
         guard let converter = AVAudioConverter(from: file.processingFormat, to: format) else {
             throw NSError(domain: "ASR", code: 4, userInfo: [NSLocalizedDescriptionKey: "Cannot create converter"])
         }
@@ -300,7 +327,7 @@ class ASRViewModel: ObservableObject {
         }
 
         var error: NSError?
-        converter.convert(to: outputBuffer, error: &error) { inNumPackets, outStatus in
+        converter.convert(to: outputBuffer, error: &error) { _, outStatus in
             outStatus.pointee = .haveData
             return buffer
         }
@@ -320,16 +347,15 @@ class ASRViewModel: ObservableObject {
         guard let asr = asr else { return }
 
         isProcessing = true
-        audioDuration = Double(samples.count) / 16000.0
 
         Task {
             do {
                 let startTime = CFAbsoluteTimeGetCurrent()
-                let text = try asr.recognize(samples: samples)
+                let asrResult = try asr.recognize(samples: samples)
                 let endTime = CFAbsoluteTimeGetCurrent()
 
                 processingTime = endTime - startTime
-                recognizedText = text.isEmpty ? "(no speech detected)" : text
+                result = asrResult
                 isProcessing = false
             } catch {
                 isProcessing = false
@@ -364,7 +390,6 @@ class AudioRecorder {
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
-        // Target format: 16kHz mono
         let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false)!
 
         guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
